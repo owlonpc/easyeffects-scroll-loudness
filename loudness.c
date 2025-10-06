@@ -173,7 +173,7 @@ main(void)
 {
 	int fd = open(mousepath, O_RDONLY);
 	if (fd < 0)
-		die("could not open mouse device");
+		die("could not open mouse device:");
 
 retry:;
 	pid_t pid = findpid("easyeffects");
