@@ -140,13 +140,7 @@ readf32(pid_t pid, uintptr_t addr, float *val)
 	struct iovec lvec = { val, sizeof *val };
 	struct iovec rvec = { (void *)addr, sizeof *val };
 
-	if (!checkalive(pid))
-		return false;
-
-	if (process_vm_readv(pid, &lvec, 1, &rvec, 1, 0) < 0)
-		return false;
-
-	return true;
+	return process_vm_readv(pid, &lvec, 1, &rvec, 1, 0) >= 0;
 }
 
 static bool
@@ -155,13 +149,7 @@ writef32(pid_t pid, uintptr_t addr, float val)
 	struct iovec lvec = { &val, sizeof val };
 	struct iovec rvec = { (void *)addr, sizeof val };
 
-	if (!checkalive(pid))
-		return false;
-
-	if (process_vm_writev(pid, &lvec, 1, &rvec, 1, 0) < 0)
-		return false;
-
-	return true;
+	return process_vm_writev(pid, &lvec, 1, &rvec, 1, 0) >= 0;
 }
 
 static float
@@ -201,7 +189,8 @@ retry:;
 			continue;
 
 		float volume;
-		if (!readf32(pid, addr, &volume) || !writef32(pid, addr, clamp(volume + ev.value, -83.f, 7.f)))
+		if (!checkalive(pid) || !readf32(pid, addr, &volume) ||
+		    !writef32(pid, addr, clamp(volume + ev.value, -83.f, 7.f)))
 			goto retry;
 	}
 
