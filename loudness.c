@@ -134,17 +134,19 @@ checkalive(pid_t pid)
 	return !strcmp(comm, "easyeffects");
 }
 
-static float
-readf32(pid_t pid, uintptr_t addr)
+static bool
+readf32(pid_t pid, uintptr_t addr, float *val)
 {
-	float val;
-	struct iovec lvec = { &val, sizeof val };
-	struct iovec rvec = { (void *)addr, sizeof val };
+	struct iovec lvec = { val, sizeof *val };
+	struct iovec rvec = { (void *)addr, sizeof *val };
+
+	if (!checkalive(pid))
+		return false;
 
 	if (process_vm_readv(pid, &lvec, 1, &rvec, 1, 0) < 0)
-		die("reading from %p failed: %s:", addr);
+		return false;
 
-	return val;
+	return true;
 }
 
 static bool
@@ -157,7 +159,7 @@ writef32(pid_t pid, uintptr_t addr, float val)
 		return false;
 
 	if (process_vm_writev(pid, &lvec, 1, &rvec, 1, 0) < 0)
-		die("writing to %p failed: %s:", addr);
+		return false;
 
 	return true;
 }
@@ -186,14 +188,21 @@ retry:;
 		                               0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
 	uintptr_t addr = findpattern(pid, sizeof pattern, pattern) + 0x10;
+	while (addr == 0x10) {
+		usleep(100 * 1000);    // 100 ms
+		addr = findpattern(pid, sizeof pattern, pattern) + 0x10;
+	}
 
 	for (;;) {
 		struct input_event ev;
 		read(fd, &ev, sizeof ev);
 
-		if (ev.type == EV_REL && ev.code == REL_WHEEL)
-			if (!writef32(pid, addr, clamp(readf32(pid, addr) + ev.value, -83.f, 7.f)))
-				goto retry;
+		if (!(ev.type == EV_REL && ev.code == REL_WHEEL))
+			continue;
+
+		float volume;
+		if (!readf32(pid, addr, &volume) || !writef32(pid, addr, clamp(volume + ev.value, -83.f, 7.f)))
+			goto retry;
 	}
 
 	__builtin_unreachable();
