@@ -12,6 +12,13 @@
 
 #include "config.h"
 
+#define RETRY(label, expr)                                                                                             \
+label:;                                                                                                                \
+	if (!(expr)) {                                                                                                     \
+		usleep(100 * 1000);                                                                                            \
+		goto label;                                                                                                    \
+	}
+
 static pid_t
 findpid(const char *name)
 {
@@ -142,29 +149,17 @@ clamp(float x, float lo, float hi)
 int
 main(void)
 {
-reopendevice:;
-	int fd = open(mousepath, O_RDONLY);
-	if (fd < 0) {
-		usleep(100 * 1000);    // 100ms
-		goto reopendevice;
-	}
+	int fd;
+	RETRY(reopendevice, (fd = open(mousepath, O_RDONLY)) >= 0)
 
-findprocess:;
-	pid_t pid = findpid("easyeffects");
-	if (pid < 0) {
-		usleep(100 * 1000);    // 100ms
-		goto findprocess;
-	}
+	pid_t pid;
+	RETRY(findprocess, (pid = findpid("easyeffects")) >= 0)
 
 	static const uint8_t pattern[] = { 0x76, 0x6F, 0x6C, 0x75, 0x6D, 0x65, 0x00, 0x00,
 		                               0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
-tryfindpattern:;
-	uintptr_t addr = findpattern(pid, sizeof pattern, pattern) + 0x10;
-	if (addr == 0x10) {
-		usleep(100 * 1000);    // 100 ms
-		goto tryfindpattern;
-	}
+	uintptr_t addr;
+	RETRY(tryfindpattern, (addr = findpattern(pid, sizeof pattern, pattern) + 0x10) != 0x10)
 
 	for (;;) {
 		struct input_event ev;
