@@ -12,25 +12,6 @@
 
 #include "config.h"
 
-static void
-die(const char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
-	va_end(ap);
-
-	if (*fmt && fmt[strlen(fmt) - 1] == ':') {
-		fputc(' ', stderr);
-		perror(NULL);
-	} else {
-		fputc('\n', stderr);
-	}
-
-	exit(1);
-}
-
 static pid_t
 findpid(const char *name)
 {
@@ -161,29 +142,36 @@ clamp(float x, float lo, float hi)
 int
 main(void)
 {
+reopendevice:;
 	int fd = open(mousepath, O_RDONLY);
-	if (fd < 0)
-		die("could not open mouse device:");
+	if (fd < 0) {
+		usleep(100 * 1000);    // 100ms
+		goto reopendevice;
+	}
 
-retry:;
+findprocess:;
 	pid_t pid = findpid("easyeffects");
 	if (pid < 0) {
 		usleep(100 * 1000);    // 100ms
-		goto retry;
+		goto findprocess;
 	}
 
 	static const uint8_t pattern[] = { 0x76, 0x6F, 0x6C, 0x75, 0x6D, 0x65, 0x00, 0x00,
 		                               0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
+tryfindpattern:;
 	uintptr_t addr = findpattern(pid, sizeof pattern, pattern) + 0x10;
-	while (addr == 0x10) {
+	if (addr == 0x10) {
 		usleep(100 * 1000);    // 100 ms
-		addr = findpattern(pid, sizeof pattern, pattern) + 0x10;
+		goto tryfindpattern;
 	}
 
 	for (;;) {
 		struct input_event ev;
-		read(fd, &ev, sizeof ev);
+		if (read(fd, &ev, sizeof ev) < 0) {
+			close(fd);
+			goto reopendevice;
+		}
 
 		if (!(ev.type == EV_REL && ev.code == REL_WHEEL))
 			continue;
@@ -191,7 +179,7 @@ retry:;
 		float volume;
 		if (!checkalive(pid) || !readf32(pid, addr, &volume) ||
 		    !writef32(pid, addr, clamp(volume + ev.value, -83.f, 7.f)))
-			goto retry;
+			goto findprocess;
 	}
 
 	__builtin_unreachable();
