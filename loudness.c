@@ -10,6 +10,9 @@
 
 #include "config.h"
 
+#define likely(x)   (__builtin_expect(!!(x), 1))
+#define unlikely(x) (__builtin_expect(!!(x), 0))
+
 static float
 clamp(float x, float lo, float hi)
 {
@@ -54,8 +57,8 @@ getvolume(int sockfd, float *vol)
 static bool
 setvolume(int sockfd, float vol)
 {
-	char msg[256];
-	snprintf(msg, sizeof msg, "set_property:output:loudness:0:volume:%.2f\n", vol);
+	char msg[44];
+	sprintf(msg, "set_property:output:loudness:0:volume:%.2f\n", vol);
 	return write(sockfd, msg, strlen(msg)) > 0;
 }
 
@@ -65,13 +68,13 @@ main(void)
 	int mousefd = -1, sockfd = -1;
 
 	for (;;) {
-		if (mousefd < 0 && (mousefd = open(mousepath, O_RDONLY)) < 0) {
+		if unlikely (mousefd < 0 && (mousefd = open(mousepath, O_RDONLY)) < 0) {
 			usleep(100 * 1000);
 			continue;
 		}
 
 		struct input_event ev;
-		if (read(mousefd, &ev, sizeof ev) < 0) {
+		if unlikely (read(mousefd, &ev, sizeof ev) < 0) {
 			close(mousefd);
 			mousefd = -1;
 			continue;
@@ -80,13 +83,13 @@ main(void)
 		if (!(ev.type == EV_REL && ev.code == REL_WHEEL))
 			continue;
 
-		if (sockfd < 0 && (sockfd = connectsocket()) < 0) {
+		if unlikely (sockfd < 0 && (sockfd = connectsocket()) < 0) {
 			usleep(100 * 1000);
 			continue;
 		}
 
 		float vol;
-		if (!getvolume(sockfd, &vol) || !setvolume(sockfd, clamp(vol + ev.value, -83.f, 7.f))) {
+		if unlikely (!getvolume(sockfd, &vol) || !setvolume(sockfd, clamp(vol + ev.value, -83.f, 7.f))) {
 			close(sockfd);
 			sockfd = -1;
 		}
